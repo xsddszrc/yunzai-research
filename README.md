@@ -41,9 +41,69 @@ yunzai-research/
 │   ├── redis-restore-systemd.sh             # 恢复 systemd Redis 托管
 │   ├── test-cookie-gacha.mjs                # Cookie 换 authkey 验证工具
 │   └── show-first-five.mjs                  # 抽卡记录最早/首个五星查询
+├── start.sh                    # 一键部署/启动脚本（install/start/status/stop）
 └── docs/
     └── Yunzai机器人研究总结.md      # 完整研究总结（部署/玩法/踩坑/性能）
 ```
+
+## 服务器部署（标准 x86_64 Debian 13）
+
+> 适用于全新 Debian 13 服务器（云 VPS 亦可，推荐 2 核 4GB 起步）。已实测于 WSL2 Debian 13，服务器为同架构，步骤一致。
+
+### 方式一：一键脚本（推荐）
+
+```bash
+# 1. 拉取本仓库
+git clone https://github.com/xsddszrc/yunzai-research.git /root/yunzai-research
+cd /root/yunzai-research
+
+# 2. 配置机器人账号（环境变量方式，不留存明文于脚本）
+export BOT_QQ=<机器人QQ号>
+export BOT_PASSWORD=<机器人QQ密码>
+export MASTER_QQ=<主人QQ号>
+
+# 3. 首次部署（装依赖 + 部署 TRSS/NapCat/插件 + 打补丁 01-08 + 写配置 + 启动）
+bash start.sh install
+```
+
+`start.sh` 子命令：
+
+| 命令 | 作用 |
+|------|------|
+| `bash start.sh install` | 首次部署并启动（幂等，可重复运行） |
+| `bash start.sh start` | 启动全部服务（Redis → NapCat → TRSS） |
+| `bash start.sh restart` | 重启全部服务 |
+| `bash start.sh status` | 查看服务状态与连接确认 |
+| `bash start.sh stop` | 停止全部服务 |
+
+脚本会自动完成：系统依赖 → Node 24 + pnpm@9 → TRSS-Yunzai → NapCat → 插件（genshin/mys-qr-login/miao-plugin）→ 补丁 01-08 → 主人/权限/渲染/NapCat 连接配置。
+
+**首次登录注意**（脚本会提示）：NapCat 首次需在 WebUI（`http://服务器IP:6099/webui`）扫码完成设备验证，之后密码自动登录。若脚本启动后 QQ 未上线，按提示手动跑一次 `xvfb-run -a ./qq --no-sandbox -q <QQ>` 完成验证。
+
+### 方式二：手动步骤（对照研究总结）
+
+完整手动步骤见 `docs/Yunzai机器人研究总结.md` 第四节（9 步）。与本仓库的差异：
+
+1. **genshin / mys-qr-login 用本仓库** `plugins/` 下的（已含全部修复），不要从 Miao-Yunzai 复制
+2. **miao-plugin 帮助配置**：复制本仓库 `plugins/miao-plugin-help.js` → `miao-plugin/config/help.js`
+3. **补丁**：`bash patches/apply-patches.sh /root/yunzai/TRSS-Yunzai`（应用 01-08）
+4. **配置模板**：`config/` 目录下的 napcat_start.sh、trss-other.yaml、trss-group.yaml、puppeteer-config.yaml 为脱敏模板，替换占位符后使用
+
+### 部署后验证
+
+```bash
+bash start.sh status          # 三个服务均 ✅
+tail -f /root/trss.log        # 出现 "OneBotv11(QQ) NapCat.Onebot 已连接"
+```
+
+然后 QQ 私聊机器人发 `#状态`（应回复统计）、`#帮助`（应渲染 7 组面板）、`#绑定UID` 绑定账号。
+
+### 生产建议
+
+- 用 `pm2` 托管：`cd /root/yunzai/TRSS-Yunzai && npm i -g pm2 && pm2 start config/pm2.yaml`，或 systemd
+- 配置 `restart_time` 定时重启防内存泄漏（研究总结第六节）
+- 保持 FlClash 等代理软件关闭（fake-IP DNS 会劫持 QQ 长连接）；生产服务器无此问题，但勿设系统级代理
+
 
 ## 快速部署
 
