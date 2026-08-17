@@ -64,6 +64,13 @@ yunzai-research/
 
 ## 许可
 
-- 研究总结：本文档
-- genshin / miao-plugin：遵循各自上游开源协议
-- mys-qr-login：GPL-3.0（TwiceDrop/mhy-qdcode-to-cookie）
+本项目仓库整体采用 **GPL-3.0**（见 LICENSE 文件），以兼容仓库内各组件的上游许可：
+
+| 组件 | 上游许可 |
+|------|---------|
+| TRSS-Yunzai（部署框架，未入库） | GPL-3.0 |
+| mys-qr-login（扫码登录插件） | GPL-3.0（TwiceDrop/mhy-qdcode-to-cookie） |
+| miao-plugin（喵喵插件，仅 help.js 配置入库） | MIT（Copyright 2023 Yoimiya） |
+| genshin（绑定插件） | 上游未声明，社区惯例自由使用 |
+
+> 本仓库仅用于学习研究；部署与使用请遵循各上游项目许可及 QQ/米游社平台规范。
