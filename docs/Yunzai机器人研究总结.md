@@ -474,3 +474,70 @@ miao-plugin `Data.importModule`（`components/Data.js:137`）加载 help 配置�
 - `patches/redis-restore-systemd.sh`：恢复 systemd Redis 托管
 - `patches/fix-route-hijack.sh`：清除 FlClash TUN 残留 fake-ip 路由规则（lookup 127/128）
 - 仓库同步：`plugins/miao-plugin-help.js` 更新为 v3，commit `f20105a` 已推送 GitHub
+
+---
+
+## 十三、追加进度（Day2 晚 19:30）— 十连卡池更新方法
+
+### 1. 问题现象
+
+QQ 发 `#十连`，抽到的全是旧版本角色（2025-04 之前的池子），与当前 7.0 至冬卡池（奥黛塔 + 阿蕾奇诺复刻）不符。
+
+### 2. 根因分析
+
+- **「十连」命令**：genshin 插件 `apps/gacha.js` → `model/gachaData.js`
+- **卡池数据**：`plugins/genshin/defSet/gacha/pool.yaml`（历史卡池列表，按时间倒序）
+- **选择逻辑**（`gachaData.js getPool()`）：
+  ```js
+  let poolArr = gsCfg.getdefSet("gacha", "pool")
+  poolArr = [...poolArr].reverse()
+  let NowPool = poolArr.find(val => new Date().getTime() <= new Date(val.endTime).getTime()) || poolArr.pop()
+  ```
+  取 `endTime >= 当前时间` 的**第一个**池子（reverse 后即最近结束的池）；找不到则 fallback 到**最旧的池**。
+- **故障原因**：pool.yaml 最新条目 endTime 是 **2025-04-15**，2026-08 时无任何池 `endTime >= now` → fallback 到数组最旧池 → 抽的全是远古池子。
+
+### 3. 解决方案（已验证生效）
+
+在 `pool.yaml` **顶部插入**当前卡池条目（例：7.0 上半 8.12–9.02）：
+
+```yaml
+- up4:
+    - 阿罗夏
+    - 罗莎莉亚
+    - 琳妮特
+  up5:
+    - 奥黛塔
+  up5_2:
+    - 阿蕾奇诺
+  weapon5:
+    - 白湖冬羽
+    - 赤月之形
+  weapon4:
+    - 西风剑
+    - 祭礼大剑
+    - 匣里灭辰
+    - 祭礼残章
+    - 弓藏
+  endTime: "2026-09-02 17:59:59"
+```
+
+**字段含义**：`up5`（主 UP 五星）/ `up5_2`（第二个卡池 UP）/ `up4`（四星陪跑）/ `weapon5`（武器池双 UP）/ `weapon4`（四星武器）/ `endTime`（卡池结束时间，决定选中）。
+
+**验证步骤**（脚本见 `patches/update-pool.sh` 及验证逻辑）：
+1. 确认角色/武器名在 miao-plugin meta 数据中存在（`Character.get` / `Weapon.get` 返回非空，`imgs.gacha` 有图）
+2. `endTime` 设为卡池**结束**时间（如 7.0 上半 9.02）
+3. 改后**无需重启**：gsCfg `watch` 用 chokidar 监听，文件变化自动清缓存（日志 `[修改配置文件][defSet][gacha][pool]`）
+4. 实测：QQ 发 `#十连`，应出现奥黛塔/阿蕾奇诺
+
+### 4. 卡池数据现状与角色数据源
+
+- miao-plugin 角色数据**已含 7.0 新角色**（奥黛塔 id 10000150、阿罗夏 id 10000150 段、奥黛塔专武「白湖冬羽」alias 标注「奥黛塔专武」）——**渲染头像无需额外下载**
+- 注意：外部攻略页写的奥黛塔专武名「霜雪圆舞」是**错误推测**，正确名为「**白湖冬羽**」（miao alias.js:101 明示）
+- 武器池 `weapon4` 四星武器可复用历史池常见武器（西风系列等），实际影响不大
+
+### 5. 后续每次版本更新
+
+1. 等新版本前瞻/实测确认卡池（五星、四星陪跑、武器、结束时间）
+2. `bash patches/update-pool.sh`（改脚本内 NEW_ENTRY 后执行）或手动编辑 pool.yaml 顶部
+3. 用 `node` 验证 `Character.get`/`Weapon.get` 可解析新名字
+4. 仓库同步 `plugins/genshin/defSet/gacha/pool.yaml` + commit
