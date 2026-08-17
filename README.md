@@ -28,7 +28,9 @@ yunzai-research/
 ├── patches/
 │   ├── 01-genshin-regex-fix.patch   # #检查ck状态 正则修复
 │   ├── 02-genshin-getckuid.patch    # 补 MysUser.getCkUid 静态方法
-│   └── apply-patches.sh             # 一键应用补丁脚本
+│   ├── 03-genshin-clear-gacha.patch # 新增 #清除十连 指令
+│   ├── 04-miao-profile-allchars.patch # 面板更新自动获取全部角色
+│   └── apply-patches.sh             # 一键应用补丁脚本（01-04）
 └── docs/
     └── Yunzai机器人研究总结.md      # 完整研究总结（部署/玩法/踩坑/性能）
 ```
@@ -53,6 +55,8 @@ yunzai-research/
 | ws-plugin 无法灌入 NapCat 消息 | 换 TRSS-Yunzai（原生 OneBotv11） |
 | `#检查ck状态` 无法触发 | 正则 `\\s`→`\s`（补丁1） |
 | `#检查ck状态` 触发即崩溃 | 补 `MysUser.getCkUid` 静态方法（补丁2） |
+| 模拟抽卡无清除指令 | 新增 `#清除十连` 指令（补丁3） |
+| 面板更新只取展示角色 | 已绑定 Cookie 自动获取全部角色（补丁4） |
 | `#绑定` 不生效 | TRSS 缺 genshin 插件（本仓库已含） |
 | QQ 反复掉线 | 本机 FlClash fake-IP DNS 劫持，关闭即恢复 |
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 应用 genshin 插件补丁（升级插件后重新执行）
+# 应用 genshin / miao-plugin 插件补丁（升级插件后重新执行）
 # 用法: bash apply-patches.sh <TRSS-Yunzai根目录>
 # 示例: bash apply-patches.sh /root/yunzai/TRSS-Yunzai
 
@@ -7,6 +7,7 @@ set -e
 TRSS_ROOT="${1:?用法: bash apply-patches.sh <TRSS-Yunzai根目录>}"
 PATCH_DIR="$(cd "$(dirname "$0")" && pwd)"
 GENSHIN="$TRSS_ROOT/plugins/genshin"
+MIAO="$TRSS_ROOT/plugins/miao-plugin"
 
 echo "==> 应用补丁到 $GENSHIN"
 
@@ -86,4 +87,95 @@ else
   echo "  ⏭ 已存在，跳过"
 fi
 
-echo "==> 补丁应用完成。重启 TRSS 生效。"
+# 补丁3: 新增 #清除十连 指令（清除模拟抽卡结果）
+echo "---- 补丁3: #清除十连 指令 ----"
+if ! grep -q 'clearGacha' "$GENSHIN/apps/gacha.js"; then
+  python3 - "$GENSHIN/apps/gacha.js" <<'PYEOF'
+import sys
+p = sys.argv[1]
+src = open(p, encoding="utf-8").read()
+old_rule = """        {
+          reg: "(^#*定轨|^#定轨(.*))$",
+          fnc: "weaponBing",
+        },
+      ],"""
+new_rule = """        {
+          reg: "(^#*定轨|^#定轨(.*))$",
+          fnc: "weaponBing",
+        },
+        {
+          reg: "^#(清除|重置|清空)(十连|抽卡|抽奖|模拟抽卡)(结果|记录|数据)?$",
+          fnc: "clearGacha",
+        },
+      ],"""
+old_method = """    this.reply(msg, false, { at: this.e.user_id })
+  }
+
+  /** 初始化创建配置文件 */"""
+new_method = """    this.reply(msg, false, { at: this.e.user_id })
+  }
+
+  /** #清除十连 清除模拟抽卡结果（仅自己） */
+  async clearGacha() {
+    let Gacha = await GachaData.init(this.e)
+    /** 删除自己的抽卡数据（保底/命定/定轨/今日本周次数全部重置） */
+    await redis.del(Gacha.key)
+
+    let msg = "已清除模拟抽卡结果\\n保底计数、命定值、定轨与今日/本周次数已重置"
+    if (Gacha.user?.weapon?.type) {
+      msg += "\\n（武器池定轨已取消）"
+    }
+    this.reply(msg, false, { at: this.e.user_id })
+  }
+
+  /** 初始化创建配置文件 */"""
+assert src.count(old_rule) == 1, "rule block not found"
+assert src.count(old_method) == 1, "method block not found"
+src = src.replace(old_rule, new_rule).replace(old_method, new_method)
+open(p, "w", encoding="utf-8").write(src)
+PYEOF
+  echo "  ✅ 已添加 #清除十连"
+else
+  echo "  ⏭ 已存在，跳过"
+fi
+
+# 补丁4: miao-plugin 已绑定Cookie用户更新面板自动获取全部角色
+echo "---- 补丁4: 面板更新全部角色（miao-plugin ProfileList.js）----"
+PROFILE_LIST="$MIAO/apps/profile/ProfileList.js"
+if ! grep -q '自动切换米游社面板失败' "$PROFILE_LIST"; then
+  python3 - "$PROFILE_LIST" <<'PYEOF'
+import sys
+p = sys.argv[1]
+src = open(p, encoding="utf-8").read()
+old = """    // 数据更新
+    let player = Player.create(e)
+    await player.refreshProfile(2, fromMys)    """
+new = """    // 已绑定Cookie的用户，自动走米游社获取全部角色（而非仅展示角色）
+    if (!fromMys && e.runtime) {
+      let oldNoTips = e.noTips
+      e.noTips = true // 探测时静默，避免无Cookie用户被提示打扰
+      try {
+        let mys = await e.runtime.getMysInfo('cookie')
+        if (mys && mys.ckInfo && mys.ckInfo.ck) {
+          fromMys = true
+        }
+      } catch (err) {
+        logger.error('自动切换米游社面板失败', err)
+      } finally {
+        e.noTips = oldNoTips
+      }
+    }
+
+    // 数据更新
+    let player = Player.create(e)
+    await player.refreshProfile(2, fromMys)    """
+assert src.count(old) == 1, "doRefresh block not found"
+src = src.replace(old, new)
+open(p, "w", encoding="utf-8").write(src)
+PYEOF
+  echo "  ✅ 已添加全部角色逻辑"
+else
+  echo "  ⏭ 已存在，跳过"
+fi
+
+echo "==> 全部补丁应用完成。重启 TRSS 生效。"

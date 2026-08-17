@@ -1,0 +1,25 @@
+--- plugins/miao-plugin/apps/profile/ProfileList.js.bak-v1	2026-08-17 19:22:58.734604882 +0800
++++ plugins/miao-plugin/apps/profile/ProfileList.js	2026-08-17 19:22:58.760814434 +0800
+@@ -17,6 +17,22 @@
+       return true
+     }
+ 
++    // 已绑定Cookie的用户，自动走米游社获取全部角色（而非仅展示角色）
++    if (!fromMys && e.runtime) {
++      let oldNoTips = e.noTips
++      e.noTips = true // 探测时静默，避免无Cookie用户被提示打扰
++      try {
++        let mys = await e.runtime.getMysInfo('cookie')
++        if (mys && mys.ckInfo && mys.ckInfo.ck) {
++          fromMys = true
++        }
++      } catch (err) {
++        logger.error('自动切换米游社面板失败', err)
++      } finally {
++        e.noTips = oldNoTips
++      }
++    }
++
+     // 数据更新
+     let player = Player.create(e)
+     await player.refreshProfile(2, fromMys)    
