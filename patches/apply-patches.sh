@@ -317,4 +317,64 @@ else
   echo "  ⏭ 已存在，跳过"
 fi
 
+# 补丁6: miao-plugin 修复（gachaStat 抢占 + 群内最强正则）
+echo "---- 补丁6: miao-plugin 修复 ----"
+# 6a: cfg_system.js 移除 gachaStat 的 miao 标记（修复 #抽卡记录 被抢占）
+CFG_SYS="$MIAO/config/system/cfg_system.js"
+if grep -q "gachaStat" "$CFG_SYS" && ! grep -q "已移除" "$CFG_SYS"; then
+  python3 - "$CFG_SYS" <<'PYEOF'
+import sys
+p = sys.argv[1]
+src = open(p, encoding="utf-8").read()
+old = """      gachaStat: {
+        title: '#抽卡分析 #抽卡统计',
+        key: '抽卡',
+        def: false,
+        miao: true
+      },"""
+new = """      gachaStat: {
+        title: '#抽卡分析 #抽卡统计',
+        key: '抽卡',
+        def: false
+        // miao: true  # 已移除：TRSS 上会让 miao 抢占 genshin 的 #抽卡记录
+      },"""
+assert src.count(old) == 1, "gachaStat block not found"
+src = src.replace(old, new)
+open(p, "w", encoding="utf-8").write(src)
+PYEOF
+  echo "  ✅ 已修复 gachaStat 抢占"
+else
+  echo "  ⏭ 已处理或文件不同，跳过"
+fi
+# 6b: profile.js 群内最强正则 .+ → .*
+PROFILE_JS="$MIAO/apps/profile.js"
+if grep -q "(最强|最高|最高分|最牛|第一|极限)+.+/" "$PROFILE_JS"; then
+  sed -i 's/\(最强|最高|最高分|最牛|第一|极限\)+.+\//\1+.*\//' "$PROFILE_JS"
+  echo "  ✅ 已修复 #群内最强 正则"
+else
+  echo "  ⏭ 已修复或文件不同，跳过"
+fi
+
+# 补丁7: 禁用 genshin #xxx材料 命令（数据源停更）
+echo "---- 补丁7: 禁用 #xxx材料 ----"
+MATERIAL_JS="$GENSHIN/apps/material.js"
+if grep -q 'reg: "^#?(星铁)?(.\*)(突破|材料|素材|培养)$"' "$MATERIAL_JS"; then
+  python3 - "$MATERIAL_JS" <<'PYEOF'
+import sys
+p = sys.argv[1]
+src = open(p, encoding="utf-8").read()
+old = '''          reg: "^#?(星铁)?(.*)(突破|材料|素材|培养)$",
+          fnc: "material",'''
+new = '''          // 已禁用：数据源为米游社人工投稿合集，最新仅到V3.6（2023），新角色无数据
+          reg: "^#?(星铁)?(突破|材料|素材|培养)$",
+          fnc: "material",'''
+assert src.count(old) == 1, "material rule not found"
+src = src.replace(old, new)
+open(p, "w", encoding="utf-8").write(src)
+PYEOF
+  echo "  ✅ 已禁用 #xxx材料"
+else
+  echo "  ⏭ 已禁用或文件不同，跳过"
+fi
+
 echo "==> 全部补丁应用完成。重启 TRSS 生效。"

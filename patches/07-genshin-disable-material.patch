@@ -1,0 +1,12 @@
+--- a/plugins/genshin/apps/material.js
++++ b/plugins/genshin/apps/material.js
+@@ -13,7 +13,8 @@
+       priority: 500,
+       rule: [
+         {
+-          reg: "^#?(星铁)?(.*)(突破|材料|素材|培养)$",
++          // 已禁用：数据源为米游社人工投稿合集，最新仅到V3.6（2023），新角色无数据
++          reg: "^#?(星铁)?(突破|材料|素材|培养)$",
+           fnc: "material",
+         },
+       ],

@@ -76,12 +76,16 @@ export const helpList = [{
     desc: '深渊数据，打完请2小时后查询'
   }, {
     icon: 61,
-    title: '#五星 #武器 #今日素材',
-    desc: '你的原神角色详情数据'
+    title: '#五星 #武器',
+    desc: '你的原神角色与武器详情'
   }, {
     icon: 63,
-    title: '#五星列表 #练度统计',
-    desc: '角色列表数据'
+    title: '#今日素材',
+    desc: '今日可刷的角色突破素材'
+  }, {
+    icon: 61,
+    title: '#练度统计',
+    desc: '角色练度数据统计'
   }, {
     icon: 61,
     title: '#幻想 #幻想真境剧诗 #上期幻想',
@@ -146,14 +150,6 @@ export const helpList = [{
     icon: 61,
     title: '#夜兰天赋 #胡桃命座',
     desc: '查看角色的天赋与命座资料'
-  }, {
-    icon: 63,
-    title: '#心海图鉴 #护摩',
-    desc: '角色武器图鉴'
-  }, {
-    icon: 61,
-    title: '#刻晴攻略',
-    desc: '西风驿站攻略'
   }, {
     icon: 63,
     title: '#日历 #日历列表',
