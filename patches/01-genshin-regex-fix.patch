@@ -1,0 +1,11 @@
+--- /tmp/orig_genshin/user.js	2026-08-17 08:55:55.654591398 +0800
++++ "/mnt/c/Users/admin/Documents/GIT-FORM-GitHub/\345\276\205\347\240\224\347\251\266/yunzai-research/plugins/genshin/apps/user.js"	2026-08-17 08:54:54.282596000 +0800
+@@ -50,7 +50,7 @@
+           fnc: "showUid",
+         },
+         {
+-          reg: /^#\\s*(检查|我的)*c(oo)?k(ie)?(状态)*$/i,
++          reg: /^#\s*(检查|我的)*c(oo)?k(ie)?(状态)*$/i,
+           fnc: "checkCkStatus",
+         },
+         {

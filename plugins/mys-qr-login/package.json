@@ -1,0 +1,13 @@
+{
+  "name": "trss-mys-qr-login",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TRSS-Yunzai 米游社扫码登录并同步 Cookie 至 miao-plugin",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  }
+}

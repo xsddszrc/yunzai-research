@@ -1,0 +1,54 @@
+--- /tmp/orig_genshin/MysUser.js	2026-08-17 08:55:56.298173923 +0800
++++ "/mnt/c/Users/admin/Documents/GIT-FORM-GitHub/\345\276\205\347\240\224\347\251\266/yunzai-research/plugins/genshin/model/mys/MysUser.js"	2026-08-17 08:54:53.833754100 +0800
+@@ -200,6 +200,51 @@
+   }
+ 
+   /**
++   * 通过CK查询绑定的游戏UID（补齐上游缺失的静态方法）
++   * @param ck 米游社Cookie
++   * @returns {Promise<{status:number, msg:string, uids:number[]}>}
++   */
++  static async getCkUid(ck, isDetail = false, isLimit = false) {
++    let uids = []
++    let err = (msg, status = 2) => {
++      return { status, msg, uids }
++    }
++    if (!ck) return err("CK为空")
++
++    let res = null
++    let msg = "error"
++    const roleUrls = {
++      mys: "https://api-takumi.mihoyo.com/binding/api/getUserGameRolesByCookie",
++      hoyolab: "https://sg-public-api.hoyolab.com/binding/api/getUserGameRolesByCookie",
++    }
++    for (let serv of ["mys", "hoyolab"]) {
++      try {
++        const roleRes = await fetch(roleUrls[serv], { method: "get", headers: { Cookie: ck } })
++        if (!roleRes?.ok) continue
++        const json = await roleRes.json()
++        if (json?.retcode === 0) {
++          res = json
++          break
++        }
++        if (json?.retcode * 1 === -100) msg = "该ck已失效，请重新登录获取"
++        msg = json?.message || "error"
++      } catch {
++        continue
++      }
++    }
++    if (!res) return err(msg)
++
++    const playerList = (res?.data?.list || []).filter(v =>
++      ["hk4e_cn", "hkrpg_cn", "nap_cn", "nap_global", "hk4e_global", "hkrpg_global"].includes(v?.game_biz),
++    )
++    if (!playerList || playerList.length <= 0) {
++      return err("该账号尚未绑定原神、星穹或绝区零 角色")
++    }
++    uids = playerList.map(v => v.game_uid)
++    return { status: 0, msg: "", uids }
++  }
++
++  /**
+    * 检查CK状态
+    * @param ck 需要检查的CK
+    * @returns {Promise<boolean|{msg: string, uids: *[], status: number}>}

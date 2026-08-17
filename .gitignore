@@ -1,0 +1,21 @@
+# 依赖与运行时数据
+node_modules/
+.pnpm-store/
+
+# 运行时数据（cookie/UID/日志，不入库）
+data/
+logs/
+*.db
+*.sqlite
+*.log
+
+# TRSS 本地生效配置（含真实 QQ/密码，只用模板）
+config/config/
+renderers/puppeteer/config.yaml
+
+# NapCat 运行时配置（含 token）
+napcat_config/
+
+# 系统文件
+.DS_Store
+Thumbs.db

@@ -1,0 +1,89 @@
+#!/bin/bash
+# 应用 genshin 插件补丁（升级插件后重新执行）
+# 用法: bash apply-patches.sh <TRSS-Yunzai根目录>
+# 示例: bash apply-patches.sh /root/yunzai/TRSS-Yunzai
+
+set -e
+TRSS_ROOT="${1:?用法: bash apply-patches.sh <TRSS-Yunzai根目录>}"
+PATCH_DIR="$(cd "$(dirname "$0")" && pwd)"
+GENSHIN="$TRSS_ROOT/plugins/genshin"
+
+echo "==> 应用补丁到 $GENSHIN"
+
+# 补丁1: #检查ck状态 正则修复 (\\s -> \s)
+echo "---- 补丁1: 正则修复 (\\s -> \s) ----"
+if grep -q '/^#\\s\*(检查|我的)\*c(oo)?k(ie)?(状态)\*$/i' "$GENSHIN/apps/user.js"; then
+  sed -i 's|/^#\\s\*(检查|我的)\*c(oo)?k(ie)?(状态)\*$/i|/^#\s*(检查|我的)*c(oo)?k(ie)?(状态)*$/i|' "$GENSHIN/apps/user.js"
+  echo "  ✅ 已修复"
+else
+  echo "  ⏭ 已修复或文件不同，跳过"
+fi
+
+# 补丁2: 补 MysUser.getCkUid 静态方法
+echo "---- 补丁2: 补齐 MysUser.getCkUid ----"
+if ! grep -q 'static async getCkUid' "$GENSHIN/model/mys/MysUser.js"; then
+  python3 - "$GENSHIN/model/mys/MysUser.js" <<'PYEOF'
+import sys
+p = sys.argv[1]
+with open(p, encoding="utf-8") as f:
+    content = f.read()
+method = """  /**
+   * 通过CK查询绑定的游戏UID（补齐上游缺失的静态方法）
+   * @param ck 米游社Cookie
+   * @returns {Promise<{status:number, msg:string, uids:number[]}>}
+   */
+  static async getCkUid(ck, isDetail = false, isLimit = false) {
+    let uids = []
+    let err = (msg, status = 2) => {
+      return { status, msg, uids }
+    }
+    if (!ck) return err("CK为空")
+
+    let res = null
+    let msg = "error"
+    const roleUrls = {
+      mys: "https://api-takumi.mihoyo.com/binding/api/getUserGameRolesByCookie",
+      hoyolab: "https://sg-public-api.hoyolab.com/binding/api/getUserGameRolesByCookie",
+    }
+    for (let serv of ["mys", "hoyolab"]) {
+      try {
+        const roleRes = await fetch(roleUrls[serv], { method: "get", headers: { Cookie: ck } })
+        if (!roleRes?.ok) continue
+        const json = await roleRes.json()
+        if (json?.retcode === 0) {
+          res = json
+          break
+        }
+        if (json?.retcode * 1 === -100) msg = "该ck已失效，请重新登录获取"
+        msg = json?.message || "error"
+      } catch {
+        continue
+      }
+    }
+    if (!res) return err(msg)
+
+    const playerList = (res?.data?.list || []).filter(v =>
+      ["hk4e_cn", "hkrpg_cn", "nap_cn", "nap_global", "hk4e_global", "hkrpg_global"].includes(v?.game_biz),
+    )
+    if (!playerList || playerList.length <= 0) {
+      return err("该账号尚未绑定原神、星穹或绝区零 角色")
+    }
+    uids = playerList.map(v => v.game_uid)
+    return { status: 0, msg: "", uids }
+  }
+
+"""
+anchor = "  /**\n   * 检查CK状态"
+idx = content.find(anchor)
+if idx == -1:
+    raise SystemExit("未找到插入锚点")
+content = content[:idx] + method + content[idx:]
+with open(p, "w", encoding="utf-8") as f:
+    f.write(content)
+PYEOF
+  echo "  ✅ 已补齐"
+else
+  echo "  ⏭ 已存在，跳过"
+fi
+
+echo "==> 补丁应用完成。重启 TRSS 生效。"

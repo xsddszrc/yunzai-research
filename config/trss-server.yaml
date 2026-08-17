@@ -1,0 +1,17 @@
+# TRSS-Yunzai 配置模板
+# 放置位置：TRSS-Yunzai/config/config/server.yaml
+# TRSS 内置 HTTP/WS 服务器（OneBot 反向连接入口）
+
+# 服务器地址
+url: http://localhost:2536
+# 服务器端口
+port: 2536
+# 服务器缺省跳转地址
+redirect: https://git.trss.me/Yunzai
+# 服务器鉴权（如需可设置 Authorization: Bearer <token>）
+auth:
+# https:
+# url: https://localhost:2537
+# port: 2537
+# key: config/localhost.key
+# cert: config/localhost.crt

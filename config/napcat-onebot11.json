@@ -1,0 +1,28 @@
+{
+  "network": {
+    "websocketClients": [
+      {
+        "name": "ws-trss-yunzai",
+        "enable": true,
+        "url": "ws://127.0.0.1:2536/OneBotv11",
+        "messagePostFormat": "array",
+        "reportSelfMessage": false,
+        "token": "",
+        "reconnectInterval": 5000,
+        "heartInterval": 30000,
+        "debug": false
+      }
+    ],
+    "websocketServers": []
+  },
+  "musicSignUrl": "",
+  "enableLocalFile2Url": false,
+  "parseMultMsg": false,
+  "imageDownloadProxy": "",
+  "timeout": {
+    "baseTimeout": 10000,
+    "uploadSpeedKBps": 256,
+    "downloadSpeedKBps": 256,
+    "maxTimeout": 1800000
+  }
+}
