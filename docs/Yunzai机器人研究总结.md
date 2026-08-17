@@ -592,3 +592,63 @@ async clearGacha() {
 - `redis-cli del Yz:genshin:gacha:private:3242134533` → 返回 1，get 为空（恢复到初始状态，下次十连重建）
 - 已重启 TRSS（19:14，pid 3061），QQ 实测 `#清除十连` 应回复「已清除模拟抽卡结果…」
 - 仓库补丁：`patches/03-genshin-clear-gacha.patch`（升级 genshin 后重打 01+02+03）
+
+---
+
+## 十五、追加进度（Day2 晚 19:40）— 面板更新自动获取全部角色
+
+### 1. 需求
+
+已绑定 Cookie 的用户执行 `#更新面板` 时，应获取**全部角色**面板数据（而非仅游戏内展示的角色）。仅绑定 UID（无 Cookie）的用户维持原行为（仅展示角色）。
+
+### 2. 现状分析（源码级）
+
+| 命令 | fromMys | 服务 | 角色范围 |
+|------|---------|------|---------|
+| `#更新面板` | false | 默认服务（mgg/enka，按 profileServer 配置） | **仅展示角色**（依赖游戏内橱窗展示） |
+| `#米游社更新面板` | true | mysPanel（米游社 API） | **全部角色** |
+
+关键代码链：
+- `apps/profile.js` profileRefresh → `ProfileList.doRefresh(e, false)`
+- `ProfileList.doRefresh` → `player.refreshProfile(2, fromMys)` → `ProfileAvatar.refreshProfile` → `Serv.req(e, player, fromMys)`
+- `Serv.getServ(uid, game, fromMys)`：`fromMys=true` 时强制返回 `mysPanel` 服务
+- `ProfileReq.requestProfile` 的 `mysPanel` 分支：`mys.getCharacter()` 拿**全部角色 id** → `getCharacterDetail(character_ids)` 逐个获取
+
+### 3. 实现方案（补丁 04）
+
+在 `miao-plugin/apps/profile/ProfileList.js` 的 `doRefresh` 中，`fromMys=false` 时先探测用户是否绑定 Cookie：
+
+```js
+// 已绑定Cookie的用户，自动走米游社获取全部角色（而非仅展示角色）
+if (!fromMys && e.runtime) {
+  let oldNoTips = e.noTips
+  e.noTips = true // 探测时静默，避免无Cookie用户被提示打扰
+  try {
+    let mys = await e.runtime.getMysInfo('cookie')
+    if (mys && mys.ckInfo && mys.ckInfo.ck) {
+      fromMys = true  // 有Cookie → 走米游社全部角色
+    }
+  } catch (err) {
+    logger.error('自动切换米游社面板失败', err)
+  } finally {
+    e.noTips = oldNoTips
+  }
+}
+```
+
+**关键机制**：
+- `e.runtime` 由 TRSS 框架注入（`lib/plugins/runtime.js:253` 每消息 `e.runtime = new Runtime(e)`）
+- `e.runtime.getMysInfo('cookie')`：有 Cookie 返回 MysInfo 实例（`ckInfo.ck` 非空），无则返回（uid 空或 ck 空）
+- **静默探测**：`e.noTips = true` 防止无 Cookie 用户收到「暂无可用CK」提示（`MysInfo.getSelfUid` / `checkReply` 会检查 noTips）
+- 边界：`#米游社更新面板` 显式传 true 不受影响；无 Cookie 用户 `fromMys` 保持 false 行为不变
+
+### 4. 生效方式
+
+miao-plugin 有 `index.js` 入口（loader 视为单一插件，apps 子文件不走热重载）→ **修改后必须重启 TRSS**。已重启（19:23，pid 3613）。
+
+### 5. 验证与入库
+
+- `node --check` 语法 OK；启动日志无错误（46 个插件正常）
+- 仓库：`patches/04-miao-profile-allchars.patch` + `apply-patches.sh` 已扩展支持 01-04 四个补丁
+- README 补丁清单已更新；commit `b44ed16` 已推送 GitHub
+- **建议实测**：QQ 发 `#更新面板`，观察日志是否出现 `面板服务：米游社`（说明走了全部角色路径），对比修改前（mgg/enka）
