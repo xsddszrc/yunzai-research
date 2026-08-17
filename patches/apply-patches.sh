@@ -178,4 +178,143 @@ else
   echo "  ⏭ 已存在，跳过"
 fi
 
+# 补丁5: 抽卡记录 cookie 一键获取（gachaLog.js 加 getAuthKeyByCk）
+echo "---- 补丁5: Cookie一键获取抽卡记录 ----"
+GACHA_LOG="$GENSHIN/model/gachaLog.js"
+if ! grep -q 'getAuthKeyByCk' "$GACHA_LOG"; then
+  python3 - "$GACHA_LOG" <<'PYEOF'
+import sys
+p = sys.argv[1]
+src = open(p, encoding="utf-8").read()
+
+# import md5
+old_import = 'import fetch from "node-fetch"'
+new_import = 'import fetch from "node-fetch"\nimport md5 from "md5"'
+assert src.count(old_import) == 1, "import anchor not found"
+src = src.replace(old_import, new_import)
+
+# 新增 getAuthKeyByCk 方法
+anchor = '  async logUrl() {'
+method = '''  /**
+   * 用已绑定Cookie（stoken）换取抽卡记录authkey
+   * 端点: POST api-takumi.mihoyo.com/binding/api/genAuthKey (auth_appid: webview_gacha)
+   * 参考: UIGF/mihoyo-api-collect + GenshinUID get_authkey_by_cookie
+   */
+  async getAuthKeyByCk() {
+    if (!this.e.runtime) return false
+    let mys
+    try {
+      let oldNoTips = this.e.noTips
+      this.e.noTips = true // 静默探测，避免打扰
+      mys = await this.e.runtime.getMysInfo('cookie')
+      this.e.noTips = oldNoTips
+    } catch (err) {
+      logger.error('获取Cookie失败', err)
+      return false
+    }
+    if (!mys || !mys.ckInfo?.ck) {
+      return false
+    }
+    let uid = mys.uid || this.uid
+    if (!uid) return false
+    const region = String(uid).slice(0, -8) === '5' ? 'cn_qd01' : 'cn_gf01'
+    const device = `Yz-${md5(uid).substring(0, 5)}`
+    const User_Agent = `Mozilla/5.0 (Linux; Android 12; ${device}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.73 Mobile Safari/537.36 miHoYoBBS/2.40.1`
+
+    const getDs = (q = '', b = '') => {
+      const n = 'xV8v4Qu54lUKrEYFZkJhB8cuOh9Asafs' // LK2 salt
+      const t = Math.round(Date.now() / 1000)
+      const r = Math.floor(Math.random() * 900000 + 100000)
+      return `${t},${r},${md5(`salt=${n}&t=${t}&r=${r}&b=${b}&q=${q}`)}`
+    }
+
+    const body = JSON.stringify({
+      auth_appid: 'webview_gacha',
+      game_biz: 'hk4e_cn',
+      game_uid: uid,
+      region,
+    })
+    const headers = {
+      'x-rpc-app_version': '2.40.1',
+      'x-rpc-client_type': '5',
+      'User-Agent': User_Agent,
+      Referer: 'https://app.mihoyo.com',
+      Origin: 'https://webstatic.mihoyo.com',
+      'X-Requested-With': 'com.mihoyo.hyperion',
+      Host: 'api-takumi.mihoyo.com',
+      Cookie: mys.ckInfo.ck,
+      'Content-Type': 'application/json',
+      DS: getDs('', body),
+    }
+    try {
+      const res = await fetch('https://api-takumi.mihoyo.com/binding/api/genAuthKey', {
+        method: 'POST',
+        headers,
+        body,
+      })
+      const json = await res.json()
+      if (json.retcode === 0 && json.data?.authkey) {
+        // 缓存 authkey（24小时）
+        await redis.setEx(`${this.urlKey}${uid}`, 86400, json.data.authkey)
+        logger.mark(`[抽卡记录] 已用Cookie获取authkey，uid:${uid}`)
+        return json.data.authkey
+      }
+      logger.error(`[抽卡记录] genAuthKey失败 retcode:${json.retcode} ${json.message || ''}`)
+    } catch (err) {
+      logger.error('[抽卡记录] genAuthKey请求异常', err)
+    }
+    return false
+  }
+
+  async logUrl() {'''
+assert src.count(anchor) == 1, "logUrl anchor not found"
+src = src.replace(anchor, method)
+
+# updateLog 兜底
+old_update = '''  /** 更新抽卡记录 */
+  async updateLog() {
+    /** 获取authkey */
+    let authkey = await redis.get(`${this.urlKey}${this.uid}`)
+    if (!authkey) return false'''
+new_update = '''  /** 更新抽卡记录 */
+  async updateLog() {
+    /** 获取authkey，缺失时自动用Cookie获取 */
+    let authkey = await redis.get(`${this.urlKey}${this.uid}`)
+    if (!authkey) {
+      authkey = await this.getAuthKeyByCk()
+    }
+    if (!authkey) return false'''
+assert src.count(old_update) == 1, "updateLog anchor not found"
+src = src.replace(old_update, new_update)
+
+# getGcLogData 兜底（#抽卡记录 无authkey时自动获取）
+old_getdata = '''  async getGcLogData() {
+    /** 卡池 */
+    const { type, typeName } = this.getPool()
+    /** 更新记录 */
+    if (!this.isLogUrl) await this.updateLog()'''
+new_getdata = '''  async getGcLogData() {
+    /** 卡池 */
+    const { type, typeName } = this.getPool()
+    /** 更新记录（无authkey时自动用Cookie获取） */
+    if (!this.isLogUrl) {
+      let authkey = await redis.get(`${this.urlKey}${this.uid}`)
+      if (!authkey) {
+        authkey = await this.getAuthKeyByCk()
+        if (authkey) {
+          logger.mark(`[抽卡记录] #${this.e?.logFnc || '抽卡记录'} 已用Cookie自动获取authkey`)
+        }
+      }
+      await this.updateLog()
+    }'''
+assert src.count(old_getdata) == 1, "getGcLogData anchor not found"
+src = src.replace(old_getdata, new_getdata)
+
+open(p, "w", encoding="utf-8").write(src)
+PYEOF
+  echo "  ✅ 已添加 Cookie 一键获取抽卡记录"
+else
+  echo "  ⏭ 已存在，跳过"
+fi
+
 echo "==> 全部补丁应用完成。重启 TRSS 生效。"

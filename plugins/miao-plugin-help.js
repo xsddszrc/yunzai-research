@@ -88,14 +88,6 @@ export const helpList = [{
     desc: '幻想真境剧诗数据'
   }, {
     icon: 63,
-    title: '#抽卡记录 #记录帮助',
-    desc: '统计游戏抽卡数据'
-  }, {
-    icon: 61,
-    title: '#角色统计 #武器统计',
-    desc: '按卡池统计抽卡数据'
-  }, {
-    icon: 63,
     title: '#上传深渊数据',
     desc: '上传您的深渊数据用于数据统计'
   }]
@@ -134,6 +126,14 @@ export const helpList = [{
     icon: 63,
     title: '#角色持有 #角色0命',
     desc: '查看角色的持有率、0命统计'
+  }, {
+    icon: 63,
+    title: '#抽卡记录 #记录帮助',
+    desc: '统计游戏抽卡数据（绑定Cookie可自动获取）'
+  }, {
+    icon: 61,
+    title: '#角色统计 #武器统计',
+    desc: '按卡池统计抽卡数据'
   }]
 }, {
   group: '资料查询',
@@ -170,6 +170,10 @@ export const helpList = [{
     icon: 21,
     title: '十连 十连2 定轨',
     desc: '真实模拟抽卡'
+  }, {
+    icon: 21,
+    title: '#清除十连 #重置抽卡',
+    desc: '清除模拟抽卡结果（保底/定轨/次数重置）'
   }, {
     icon: 74,
     title: '添加哈哈 删除哈哈',

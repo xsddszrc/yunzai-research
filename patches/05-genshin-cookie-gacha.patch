@@ -1,0 +1,122 @@
+diff --git a/plugins/genshin/model/gachaLog.js b/plugins/genshin/model/gachaLog.js
+index 61b61ff..2a337bb 100644
+--- a/plugins/genshin/model/gachaLog.js
++++ b/plugins/genshin/model/gachaLog.js
+@@ -1,5 +1,6 @@
+ import base from "./base.js"
+ import fetch from "node-fetch"
++import md5 from "md5"
+ import lodash from "lodash"
+ import fs from "node:fs"
+ import common from "../../../lib/common/common.js"
+@@ -57,6 +58,77 @@ export default class GachaLog extends base {
+     }
+   }
+ 
++  /**
++   * 用已绑定Cookie（stoken）换取抽卡记录authkey
++   * 端点: POST api-takumi.mihoyo.com/binding/api/genAuthKey (auth_appid: webview_gacha)
++   * 参考: UIGF/mihoyo-api-collect + GenshinUID get_authkey_by_cookie
++   */
++  async getAuthKeyByCk() {
++    if (!this.e.runtime) return false
++    let mys
++    try {
++      let oldNoTips = this.e.noTips
++      this.e.noTips = true // 静默探测，避免打扰
++      mys = await this.e.runtime.getMysInfo('cookie')
++      this.e.noTips = oldNoTips
++    } catch (err) {
++      logger.error('获取Cookie失败', err)
++      return false
++    }
++    if (!mys || !mys.ckInfo?.ck) {
++      return false
++    }
++    let uid = mys.uid || this.uid
++    if (!uid) return false
++    const region = String(uid).slice(0, -8) === '5' ? 'cn_qd01' : 'cn_gf01'
++    const device = `Yz-${md5(uid).substring(0, 5)}`
++    const User_Agent = `Mozilla/5.0 (Linux; Android 12; ${device}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.73 Mobile Safari/537.36 miHoYoBBS/2.40.1`
++
++    const getDs = (q = '', b = '') => {
++      const n = 'xV8v4Qu54lUKrEYFZkJhB8cuOh9Asafs' // LK2 salt
++      const t = Math.round(Date.now() / 1000)
++      const r = Math.floor(Math.random() * 900000 + 100000)
++      return `${t},${r},${md5(`salt=${n}&t=${t}&r=${r}&b=${b}&q=${q}`)}`
++    }
++
++    const body = JSON.stringify({
++      auth_appid: 'webview_gacha',
++      game_biz: 'hk4e_cn',
++      game_uid: uid,
++      region,
++    })
++    const headers = {
++      'x-rpc-app_version': '2.40.1',
++      'x-rpc-client_type': '5',
++      'User-Agent': User_Agent,
++      Referer: 'https://app.mihoyo.com',
++      Origin: 'https://webstatic.mihoyo.com',
++      'X-Requested-With': 'com.mihoyo.hyperion',
++      Host: 'api-takumi.mihoyo.com',
++      Cookie: mys.ckInfo.ck,
++      'Content-Type': 'application/json',
++      DS: getDs('', body),
++    }
++    try {
++      const res = await fetch('https://api-takumi.mihoyo.com/binding/api/genAuthKey', {
++        method: 'POST',
++        headers,
++        body,
++      })
++      const json = await res.json()
++      if (json.retcode === 0 && json.data?.authkey) {
++        // 缓存 authkey（24小时）
++        await redis.setEx(`${this.urlKey}${uid}`, 86400, json.data.authkey)
++        logger.mark(`[抽卡记录] 已用Cookie获取authkey，uid:${uid}`)
++        return json.data.authkey
++      }
++      logger.error(`[抽卡记录] genAuthKey失败 retcode:${json.retcode} ${json.message || ''}`)
++    } catch (err) {
++      logger.error('[抽卡记录] genAuthKey请求异常', err)
++    }
++    return false
++  }
++
+   async logUrl() {
+     let url = this.e.msg
+ 
+@@ -272,8 +344,11 @@ export default class GachaLog extends base {
+ 
+   /** 更新抽卡记录 */
+   async updateLog() {
+-    /** 获取authkey */
++    /** 获取authkey，缺失时自动用Cookie获取 */
+     let authkey = await redis.get(`${this.urlKey}${this.uid}`)
++    if (!authkey) {
++      authkey = await this.getAuthKeyByCk()
++    }
+     if (!authkey) return false
+ 
+     /** 调一次接口判断是否有效 */
+@@ -486,8 +561,17 @@ export default class GachaLog extends base {
+   async getGcLogData() {
+     /** 卡池 */
+     const { type, typeName } = this.getPool()
+-    /** 更新记录 */
+-    if (!this.isLogUrl) await this.updateLog()
++    /** 更新记录（无authkey时自动用Cookie获取） */
++    if (!this.isLogUrl) {
++      let authkey = await redis.get(`${this.urlKey}${this.uid}`)
++      if (!authkey) {
++        authkey = await this.getAuthKeyByCk()
++        if (authkey) {
++          logger.mark(`[抽卡记录] #${this.e?.logFnc || '抽卡记录'} 已用Cookie自动获取authkey`)
++        }
++      }
++      await this.updateLog()
++    }
+     /** 统计计算记录 */
+     let data = this.analyse()
+     data.type = type
