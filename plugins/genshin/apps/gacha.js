@@ -20,6 +20,10 @@ export class gacha extends plugin {
           reg: "(^#*定轨|^#定轨(.*))$",
           fnc: "weaponBing",
         },
+        {
+          reg: "^#(清除|重置|清空)(十连|抽卡|抽奖|模拟抽卡)(结果|记录|数据)?$",
+          fnc: "clearGacha",
+        },
       ],
     })
   }
@@ -105,6 +109,19 @@ export class gacha extends plugin {
     Gacha.user = user
     Gacha.saveUser()
 
+    this.reply(msg, false, { at: this.e.user_id })
+  }
+
+  /** #清除十连 清除模拟抽卡结果（仅自己） */
+  async clearGacha() {
+    let Gacha = await GachaData.init(this.e)
+    /** 删除自己的抽卡数据（保底/命定/定轨/今日本周次数全部重置） */
+    await redis.del(Gacha.key)
+
+    let msg = "已清除模拟抽卡结果\n保底计数、命定值、定轨与今日/本周次数已重置"
+    if (Gacha.user?.weapon?.type) {
+      msg += "\n（武器池定轨已取消）"
+    }
     this.reply(msg, false, { at: this.e.user_id })
   }
 
