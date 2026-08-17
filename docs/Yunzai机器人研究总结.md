@@ -1,4 +1,4 @@
-﻿# Yunzai 机器人（QQ Bot）研究总结
+# Yunzai 机器人（QQ Bot）研究总结
 
 > **研究周期**：2026-08-16 ~ 08-17（两阶段）
 > **研究环境**：Windows 11 + WSL2 Debian 13 (trixie)，4 核 15GB
@@ -428,3 +428,49 @@ miao-plugin（游戏）、genshin（绑定）、锅巴插件（Web 管理台）�
 | `plugins/genshin/apps/user.js:53` | 正则 `\\s` → `\s` |
 | `plugins/genshin/model/mys/MysUser.js` | 新增 `static async getCkUid` 方法 |
 | `plugins/miao-plugin/config/help.js` | 自定义帮助（新增绑定/扫码组） |
+
+---
+
+## 十二、追加进度（Day2 晚 19:00）— 帮助面板 v3 按绑定状态重排
+
+### 1. 动机（用户指出分类问题）
+
+- `#状态` 是 **TRSS 框架系统命令**（`lib/events/connect.js` 明示「#状态 查看运行状态」），却被放在「个人信息查询（需绑定Cookie）」组 —— 分类错误
+- 管理员命令应与普通命令分离，避免混排
+- 分组应**严格按绑定状态划分**：绑定 UID 相关 / 已绑定 Cookie 相关 / 无需绑定
+
+### 2. 新版 7 组结构（已部署并实测生效）
+
+| 组 | 条目数 | 内容 |
+|----|--------|------|
+| 账号绑定（新用户先看这里） | 3 | `#绑定UID #星铁绑定UID`、`#扫码登录 #扫码状态`、`#UID #绑定ck` |
+| **已绑定UID可用** | 12 | 角色/面板/圣遗物/深渊/五星/幻想/抽卡记录/上传深渊数据 |
+| **已绑定Cookie可用** | 8 | 体力/原石札记/检查ck状态/我的ck/留影叙佳期/深渊使用率/深渊配队/角色持有 |
+| 资料查询 | 6 | 角色资料/图鉴/攻略/日历/公告兑换码（无需绑定） |
+| 通用功能 | 7 | 十连/表情/老婆/幽境/月谕圣牌（无需绑定） |
+| 系统与帮助 | 2 | `#状态`、`#帮助 #版本` |
+| 管理命令，仅管理员可用 | 5 | 用户统计/喵喵设置/喵喵更新图像/配置公共ck/删除无效用户（auth: master） |
+
+### 3. 命令绑定要求判定依据（源码级核实）
+
+| 命令 | 绑定要求 | 依据 |
+|------|---------|------|
+| `#角色 #深渊 #五星 #幻想` | 仅 UID | genshin `role.js` 用 `this.e.uid`（Abyss/Weapon/RoleIndex 模型） |
+| `#面板 #更新面板 #圣遗物` | 仅 UID | miao `profile.js` ProfileList/ProfileDetail |
+| `#体力 #原石 #札记` | Cookie | genshin `dailyNote.js`/`ledger.js` 走 `getCkUidList` |
+| `#深渊使用率 #深渊配队 #角色持有` | Cookie | miao `stat/` 各文件提示「请绑定ck后再使用」 |
+| `#留影叙佳期` | Cookie+UID | genshin `takeBirthdayPhoto.js` 显式检查 |
+| `#配置公共ck #使用全部ck` | master | genshin `setPubCk.js` `permission: "master"` |
+| `#用户统计 #刷新用户统计 #删除无效用户` | master | genshin `userAdmin.js` `permission: "master"` |
+| `#状态` | 系统命令 | TRSS `lib/events/connect.js`（不属于任何插件） |
+
+### 4. 生效机制（重要认知）
+
+miao-plugin `Data.importModule`（`components/Data.js:137`）加载 help 配置时带 `?t=${Date.now()}` **缓存破坏** → 每次 `#帮助` 都重新 import `config/help.js` → **改配置无需重启 TRSS，下一条 `#帮助` 即生效**。已实测（18:51 渲染新版成功）。
+
+### 5. 同期入库
+
+- `patches/redis-diagnose.sh`~`5.sh`：Redis 僵尸进程诊断（上次阻塞问题的排查工具）
+- `patches/redis-restore-systemd.sh`：恢复 systemd Redis 托管
+- `patches/fix-route-hijack.sh`：清除 FlClash TUN 残留 fake-ip 路由规则（lookup 127/128）
+- 仓库同步：`plugins/miao-plugin-help.js` 更新为 v3，commit `f20105a` 已推送 GitHub
