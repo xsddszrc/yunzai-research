@@ -377,4 +377,51 @@ else
   echo "  ⏭ 已禁用或文件不同，跳过"
 fi
 
+# 补丁8: miao gacha.js 移除 yzRule（修复 #抽卡记录 被抢占）
+echo "---- 补丁8: miao gacha.js 移除 yzRule ----"
+MIAO_GACHA="$MIAO/apps/gacha.js"
+if grep -q 'yzRule' "$MIAO_GACHA"; then
+  python3 - "$MIAO_GACHA" <<'PYEOF'
+import sys
+p = sys.argv[1]
+src = open(p, encoding="utf-8").read()
+old = '''app.reg({
+  detail: {
+    name: '抽卡记录',
+    fn: Gacha.detail,
+    rule: /^#*(星铁)?喵喵(抽卡|抽奖|角色|武器|光锥|常驻|集录|up)+池?(记录|祈愿|分析)$/,
+    yzRule: /^#*(星铁)?(抽卡|抽奖|角色|武器|光锥|常驻|集录|up)+池?(记录|祈愿|分析)$/,
+    yzCheck: () => Cfg.get('gachaStat', false)
+  },
+  stat: {
+    name: '抽卡统计',
+    fn: Gacha.stat,
+    rule: /^#*(星铁)?喵喵(全部|抽卡|抽奖|角色|武器|光锥|常驻|集录|up|版本)+池?统计$/,
+    yzRule: /^#*(星铁)?(全部|抽卡|抽奖|角色|武器|光锥|常驻|集录|up|版本)+池?统计$/,
+    yzCheck: () => Cfg.get('gachaStat', false)
+  }
+})'''
+new = '''// 注：已删除 yzRule。TRSS 上 Version.isMiao=true 时 yzRule 无条件生效（yzCheck 不参与判断），
+// 会抢占 genshin 的 #抽卡记录。普通 #抽卡记录 由 genshin 处理（支持 Cookie 一键获取）。
+app.reg({
+  detail: {
+    name: '抽卡记录',
+    fn: Gacha.detail,
+    rule: /^#*(星铁)?喵喵(抽卡|抽奖|角色|武器|光锥|常驻|集录|up)+池?(记录|祈愿|分析)$/
+  },
+  stat: {
+    name: '抽卡统计',
+    fn: Gacha.stat,
+    rule: /^#*(星铁)?喵喵(全部|抽卡|抽奖|角色|武器|光锥|常驻|集录|up|版本)+池?统计$/
+  }
+})'''
+assert src.count(old) == 1, "miao gacha app.reg block not found"
+src = src.replace(old, new)
+open(p, "w", encoding="utf-8").write(src)
+PYEOF
+  echo "  ✅ 已移除 miao gacha yzRule"
+else
+  echo "  ⏭ 已处理，跳过"
+fi
+
 echo "==> 全部补丁应用完成。重启 TRSS 生效。"

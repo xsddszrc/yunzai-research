@@ -425,6 +425,13 @@ export default class GachaLog extends base {
       region: this.getServer(),
     })
 
+    if (res.retcode === -110) {
+      // 访问过于频繁，等待30秒后重试
+      logger.mark(`${this.e.logFnc}[UID:${this.uid}] 请求过于频繁，等待30秒后重试...`)
+      await common.sleep(30000)
+      return await this.getAllLog(ids, authkey, page, endId)
+    }
+
     if (res.retcode != 0) {
       return { hasErr: true, list: [] }
     }
@@ -561,7 +568,7 @@ export default class GachaLog extends base {
   async getGcLogData() {
     /** 卡池 */
     const { type, typeName } = this.getPool()
-    /** 更新记录（无authkey时自动用Cookie获取） */
+    /** 更新记录（无authkey时自动用Cookie获取；无本地数据时直接拉取） */
     if (!this.isLogUrl) {
       let authkey = await redis.get(`${this.urlKey}${this.uid}`)
       if (!authkey) {
@@ -570,7 +577,10 @@ export default class GachaLog extends base {
           logger.mark(`[抽卡记录] #${this.e?.logFnc || '抽卡记录'} 已用Cookie自动获取authkey`)
         }
       }
-      await this.updateLog()
+      // 有authkey才拉取（Cookie获取成功或已有缓存）；否则仅展示本地数据
+      if (authkey) {
+        await this.updateLog()
+      }
     }
     /** 统计计算记录 */
     let data = this.analyse()
@@ -629,61 +639,48 @@ export default class GachaLog extends base {
   }
 
   async getUid() {
-    if (!fs.existsSync(this.path)) {
-      this.e.reply(`暂无抽卡记录\n${this.e?.isSr ? "*" : "#"}记录帮助，查看配置说明`, false, {
-        at: true,
-      })
-      return false
-    }
-
-    let logs = fs.readdirSync(this.path)
-
-    if (lodash.isEmpty(logs)) {
-      this.e.reply(`暂无抽卡记录\n${this.e?.isSr ? "*" : "#"}记录帮助，查看配置说明`, false, {
-        at: true,
-      })
-      return false
-    }
-
+    /** 优先从绑定获取uid（不依赖本地数据目录，支持Cookie一键获取） */
     if (!this.uid) {
       this.e.at = false
-      this.uid = this?.e?.isSr
-        ? this.e.user?._games?.sr?.uid
-        : this.e.user?._games?.gs?.uid ||
-          (await this.e.runtime.getUid(this.e)) ||
-          (await redis.get(this.uidKey))
+      try {
+        this.uid = this?.e?.isSr
+          ? this.e.user?._games?.sr?.uid
+          : this.e.user?._games?.gs?.uid ||
+            (await this.e.runtime.getUid(this.e)) ||
+            (await redis.get(this.uidKey))
+      } catch (err) {
+        logger.error('[抽卡记录] 获取uid失败', err)
+      }
     }
 
-    /** 记录有绑定的uid */
-    if (this.uid && logs.includes(String(this.uid))) {
+    /** 本地已有数据目录，且绑定的uid有对应记录 → 直接返回 */
+    if (this.uid && fs.existsSync(`${this.path}${this.uid}`)) {
       return this.uid
     }
 
-    /** 拿修改时间最后的uid */
-    let uidArr = []
-    for (let uid of logs) {
-      let json = this?.e?.isSr ? `${this.path}${uid}/11.json` : `${this.path}${uid}/301.json`
-      if (!fs.existsSync(json)) {
-        continue
+    /** 本地有数据目录但绑定的uid无记录 → 用最近更新的uid */
+    if (fs.existsSync(this.path)) {
+      let logs = fs.readdirSync(this.path)
+      let uidArr = []
+      for (let uid of logs) {
+        let json = this?.e?.isSr ? `${this.path}${uid}/11.json` : `${this.path}${uid}/301.json`
+        if (!fs.existsSync(json)) continue
+        let tmp = fs.statSync(json)
+        uidArr.push({ uid, mtimeMs: tmp.mtimeMs })
       }
-
-      let tmp = fs.statSync(json)
-      uidArr.push({
-        uid,
-        mtimeMs: tmp.mtimeMs,
-      })
-    }
-    if (uidArr.length <= 0) {
-      return false
+      if (uidArr.length > 0) {
+        uidArr.sort((a, b) => b.mtimeMs - a.mtimeMs)
+        this.uid = this.uid || uidArr[0].uid
+        return this.uid
+      }
     }
 
-    uidArr = uidArr.sort(function (a, b) {
-      return b.mtimeMs - a.mtimeMs
-    })
+    /** 有绑定uid就返回（即使本地无目录，也会走Cookie自动获取） */
+    if (this.uid) {
+      return this.uid
+    }
 
-    this.uid = uidArr[0].uid
-
-    return uidArr[0].uid
+    return false
   }
 
   /** 统计计算记录 */
