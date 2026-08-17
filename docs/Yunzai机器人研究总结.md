@@ -541,3 +541,54 @@ QQ 发 `#十连`，抽到的全是旧版本角色（2025-04 之前的池子）�
 2. `bash patches/update-pool.sh`（改脚本内 NEW_ENTRY 后执行）或手动编辑 pool.yaml 顶部
 3. 用 `node` 验证 `Character.get`/`Weapon.get` 可解析新名字
 4. 仓库同步 `plugins/genshin/defSet/gacha/pool.yaml` + commit
+
+---
+
+## 十四、追加进度（Day2 晚 19:40）— 新增「清除模拟抽卡结果」指令
+
+### 1. 需求
+
+QQ 里想重置自己的模拟抽卡数据（保底计数、命定值、定轨、今日/本周次数），新增清除指令。
+
+### 2. 数据存储（关键认知）
+
+模拟抽卡用户数据存 **Redis**（非文件）：
+- `key = Yz:genshin:gacha:{群号|private}:{QQ}`（`gachaData.js` 的 `key` getter，prefix 在 `model/base.js`）
+- 结构：`permanent`/`role`/`weapon`（保底 num4/num5、isUp4/isUp5、weapon 含 lifeNum 命定值 + type 定轨）、`today`（今日次数，四点刷新）、`week`（本周五星数）
+- TTL：14 天（`saveUser` 里 `setEx` 3600*24*14）
+- 访问：全局 `redis` 对象（TRSS 提供，`redis.get/del/setEx` 可直接用）
+
+### 3. 指令实现（`plugins/genshin/apps/gacha.js`）
+
+```js
+// rule 新增
+{
+  reg: "^#(清除|重置|清空)(十连|抽卡|抽奖|模拟抽卡)(结果|记录|数据)?$",
+  fnc: "clearGacha",
+},
+
+// 方法
+async clearGacha() {
+  let Gacha = await GachaData.init(this.e)
+  await redis.del(Gacha.key)  // 删除自己的抽卡数据
+  let msg = "已清除模拟抽卡结果\n保底计数、命定值、定轨与今日/本周次数已重置"
+  if (Gacha.user?.weapon?.type) msg += "\n（武器池定轨已取消）"
+  this.reply(msg, false, { at: this.e.user_id })
+}
+```
+
+**权限**：所有人可用，但只能清自己（key 带自己的 QQ，天然隔离）。
+**命令别名**：`#清除十连` `#清除抽卡` `#清除抽卡结果` `#重置抽卡` `#清空十连` 等。
+
+### 4. 生效机制（重要认知）
+
+- **配置文件**（pool.yaml 等）：gsCfg chokidar 监听自动清缓存 → **无需重启**
+- **插件代码**（apps/*.js）：genshin 有 `index.js` 入口，loader 把整个 genshin 当**单一插件**加载（`import('./apps/${file}')` 动态导入），apps 子文件**不走热重载** → **必须重启 TRSS**
+- 重启命令：`kill -9 $(ss -tlnp | grep 2536 | grep -oE "pid=[0-9]+" | cut -d= -f2)` 后 `cd /root/yunzai/TRSS-Yunzai && setsid nohup node . > /root/trss.log 2>&1 < /dev/null &`
+
+### 5. 验证
+
+- `node --check` 语法 OK；`#重置用户统计`（userAdmin master 权限）与 `#重置抽卡` 正则不冲突
+- `redis-cli del Yz:genshin:gacha:private:3242134533` → 返回 1，get 为空（恢复到初始状态，下次十连重建）
+- 已重启 TRSS（19:14，pid 3061），QQ 实测 `#清除十连` 应回复「已清除模拟抽卡结果…」
+- 仓库补丁：`patches/03-genshin-clear-gacha.patch`（升级 genshin 后重打 01+02+03）
