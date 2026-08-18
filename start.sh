@@ -138,6 +138,12 @@ install() {
         fi
       done
     fi
+    # NapCat 迁移后，修复 loadNapCat.js 里的硬编码安装路径（否则 QQ 找不到 napcat.mjs）
+    local load_napcat="$NAPCAT_DIR/opt/QQ/resources/app/loadNapCat.js"
+    if [ -f "$load_napcat" ]; then
+      sed -i "s|/root/Napcat|$NAPCAT_DIR|g; s|/opt/Napcat|$NAPCAT_DIR|g" "$load_napcat" 2>/dev/null || true
+      log "  loadNapCat.js 路径已修正为 $NAPCAT_DIR"
+    fi
   fi
 
   # 5. 安装插件（本仓库自带 genshin + mys-qr-login；miao-plugin 单独下载）

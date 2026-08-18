@@ -13,8 +13,26 @@ echo "==> 应用补丁到 $GENSHIN"
 
 # 补丁1: #检查ck状态 正则修复 (\\s -> \s)
 echo "---- 补丁1: 正则修复 (\\s -> \s) ----"
-if grep -q '/^#\\s\*(检查|我的)\*c(oo)?k(ie)?(状态)\*$/i' "$GENSHIN/apps/user.js"; then
-  sed -i 's|/^#\\s\*(检查|我的)\*c(oo)?k(ie)?(状态)\*$/i|/^#\s*(检查|我的)*c(oo)?k(ie)?(状态)*$/i|' "$GENSHIN/apps/user.js"
+if grep -q '/^#\\\\s\*(检查|我的)\*c(oo)?k(ie)?(状态)\*$/i' "$GENSHIN/apps/user.js"; then
+  python3 - "$GENSHIN/apps/user.js" <<'PYEOF'
+import sys
+p = sys.argv[1]
+src = open(p, encoding="utf-8").read()
+old = "/^#\\\\s*(检查|我的)*c(oo)?k(ie)?(状态)*$/i"
+new = "/^#\\s*(检查|我的)*c(oo)?k(ie)?(状态)*$/i"
+if old in src:
+    src = src.replace(old, new)
+    open(p, "w", encoding="utf-8").write(src)
+    print("  正则已修复")
+else:
+    print("  未找到目标正则，尝试通用替换")
+    if "\\\\s" in src:
+        src = src.replace("\\\\s", "\\s")
+        open(p, "w", encoding="utf-8").write(src)
+        print("  已做 \\\\s -> \\s 全局替换")
+    else:
+        print("  无 \\\\s 字面量，跳过")
+PYEOF
   echo "  ✅ 已修复"
 else
   echo "  ⏭ 已修复或文件不同，跳过"
