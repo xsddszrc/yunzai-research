@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# Yunzai 机器人快速启动脚本（标准 x86_64 Debian 13 服务器）
+# Yunzai 机器人快速启动脚本（Debian 12/13，x86_64 / aarch64）
 #
 # 用法:
 #   bash start.sh              # 启动（已部署过：Redis+NapCat+TRSS）
@@ -12,6 +12,9 @@
 #   BOT_QQ        机器人 QQ 号
 #   BOT_PASSWORD  机器人 QQ 密码（NapCat 自动登录用）
 #   MASTER_QQ     主人 QQ 号
+#
+# 可自定义:
+#   BASE_DIR      安装根目录（默认 /opt/napyunzai）
 # =============================================================
 set -e
 
@@ -20,16 +23,31 @@ BOT_QQ="${BOT_QQ:-<机器人QQ>}"
 BOT_PASSWORD="${BOT_PASSWORD:-<QQ密码>}"
 MASTER_QQ="${MASTER_QQ:-<主人QQ>}"
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"          # 本仓库目录
-TRSS_ROOT="/root/yunzai/TRSS-Yunzai"               # TRSS 安装目录
-NAPCAT_DIR="/root/Napcat"                          # NapCat 安装目录
-TRSS_LOG="/root/trss.log"
-NAPCAT_LOG="/root/napcat_run.log"
-NAPCAT_START="/root/napcat_start.sh"
+
+# 安装根目录（默认 /opt/napyunzai，不硬编码 /root）
+BASE_DIR="${BASE_DIR:-/opt/napyunzai}"
+TRSS_ROOT="$BASE_DIR/TRSS-Yunzai"                  # TRSS 安装目录
+NAPCAT_DIR="$BASE_DIR/Napcat"                      # NapCat 安装目录
+CACHE_DIR="$BASE_DIR/cache"                        # 临时/下载缓存（结束自动清理）
+TRSS_LOG="$BASE_DIR/trss.log"
+NAPCAT_LOG="$BASE_DIR/napcat_run.log"
+NAPCAT_START="$BASE_DIR/napcat_start.sh"
 
 # ---------- 工具函数 ----------
 log()  { echo -e "\033[32m[$(date '+%H:%M:%S')]\033[0m $*"; }
 warn() { echo -e "\033[33m[$(date '+%H:%M:%S')]\033[0m $*"; }
 die()  { echo -e "\033[31m[$(date '+%H:%M:%S')]\033[0m $*"; exit 1; }
+
+# 判断 Debian 大版本（12=bookworm / 13=trixie）
+detect_debian_ver() {
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    echo "$VERSION_ID"
+  else
+    echo "12"
+  fi
+}
+DEBIAN_VER="$(detect_debian_ver)"
 
 check_placeholder() {
   if [ "$BOT_QQ" = "<机器人QQ>" ] || [ "$BOT_PASSWORD" = "<QQ密码>" ] || [ "$MASTER_QQ" = "<主人QQ>" ]; then
@@ -41,26 +59,53 @@ is_installed() {
   [ -d "$TRSS_ROOT/node_modules" ] && [ -f "$NAPCAT_DIR/opt/QQ/qq" ]
 }
 
+# 清理缓存目录（install 结束时调用）
+cleanup_cache() {
+  if [ -d "$CACHE_DIR" ]; then
+    log "清理临时缓存 $CACHE_DIR ..."
+    rm -rf "$CACHE_DIR"
+  fi
+}
+# 任何退出路径都清理缓存
+trap cleanup_cache EXIT
+
 # ---------- 首次部署 ----------
 install() {
   check_placeholder
-  log "=== 开始首次部署 ==="
+  log "=== 开始首次部署（BASE_DIR=$BASE_DIR, Debian $DEBIAN_VER, $(uname -m)）==="
+  mkdir -p "$BASE_DIR" "$CACHE_DIR"
 
-  # 1. 系统依赖
+  # 1. 系统依赖（兼容 Debian 12/13 包名）
   log "[1/7] 安装系统依赖..."
   export DEBIAN_FRONTEND=noninteractive
   apt update
-  apt install -y redis-server unzip zip jq curl git xvfb screen xauth \
-    libnss3 libgbm1 libglib2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64 libgtk-3-0t64 libasound2t64 \
-    libgcrypt20 libnspr4 libcups2 libatk-bridge2.0-0t64 libxss1 libxkbcommon0 \
-    fonts-noto-cjk chromium
+  if [ "$DEBIAN_VER" = "12" ]; then
+    # bookworm: libglib2.0-0（无 -0t64 后缀）
+    apt install -y redis-server unzip zip jq curl git xvfb screen xauth \
+      libnss3 libgbm1 libglib2.0-0 libatk1.0-0 libatspi2.0-0 libgtk-3-0 libasound2 \
+      libgcrypt20 libnspr4 libcups2 libatk-bridge2.0-0 libxss1 libxkbcommon0 \
+      fonts-noto-cjk chromium
+  else
+    # trixie: -0t64 后缀
+    apt install -y redis-server unzip zip jq curl git xvfb screen xauth \
+      libnss3 libgbm1 libglib2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64 libgtk-3-0t64 libasound2t64 \
+      libgcrypt20 libnspr4 libcups2 libatk-bridge2.0-0t64 libxss1 libxkbcommon0 \
+      fonts-noto-cjk chromium
+  fi
 
-  # 2. Node.js ≥ 23.11（官方 tarball，避免旧源包版本过旧）
+  # 2. Node.js ≥ 23.11（按架构选 tarball）
   if ! node -v 2>/dev/null | grep -qE '^v(2[3-9]|[3-9][0-9])'; then
-    log "[2/7] 安装 Node.js 24 LTS..."
-    curl -L https://nodejs.org/dist/v24.4.1/node-v24.4.1-linux-x64.tar.xz -o /tmp/node24.tar.xz
-    cd /tmp && tar -xf node24.tar.xz
-    cp -r node-v24.4.1-linux-x64/{bin,include,lib,share} /usr/local/
+    log "[2/7] 安装 Node.js 24 LTS ($(uname -m))..."
+    ARCH="$(uname -m)"
+    case "$ARCH" in
+      aarch64|arm64) NODE_ARCH="linux-arm64" ;;
+      x86_64|amd64)  NODE_ARCH="linux-x64" ;;
+      *) die "不支持的架构: $ARCH" ;;
+    esac
+    NODE_TARBALL="$CACHE_DIR/node24.tar.xz"
+    curl -L "https://nodejs.org/dist/v24.4.1/node-v24.4.1-$NODE_ARCH.tar.xz" -o "$NODE_TARBALL"
+    cd "$CACHE_DIR" && tar -xf node24.tar.xz
+    cp -r "node-v24.4.1-$NODE_ARCH"/{bin,include,lib,share} /usr/local/
     hash -r
   fi
   node -v
@@ -68,7 +113,7 @@ install() {
 
   # 3. 部署 TRSS-Yunzai
   log "[3/7] 部署 TRSS-Yunzai..."
-  mkdir -p /root/yunzai
+  mkdir -p "$BASE_DIR"
   if [ ! -d "$TRSS_ROOT/.git" ]; then
     git clone --depth 1 https://github.com/TimeRainStarSky/Yunzai "$TRSS_ROOT"
   fi
@@ -78,16 +123,30 @@ install() {
   # 4. 安装 NapCat（NTQQ 协议端）
   log "[4/7] 安装 NapCat..."
   if [ ! -f "$NAPCAT_DIR/opt/QQ/qq" ]; then
-    curl -o /tmp/napcat.sh https://raw.githubusercontent.com/NapNeko/NapCat-Installer/main/script/install.sh
-    bash /tmp/napcat.sh --docker n --cli n --proxy 0 --force
+    NAPCAT_INSTALLER="$CACHE_DIR/napcat.sh"
+    curl -o "$NAPCAT_INSTALLER" https://raw.githubusercontent.com/NapNeko/NapCat-Installer/main/script/install.sh
+    # NapCat 安装器默认装 /opt/QQ 或用户目录，设置目标到 BASE_DIR
+    bash "$NAPCAT_INSTALLER" --docker n --cli n --proxy 0 --force
+    # 若安装到默认位置（/root/QQ 或 /opt/QQ），迁移到 BASE_DIR/Napcat
+    if [ ! -f "$NAPCAT_DIR/opt/QQ/qq" ]; then
+      for cand in /opt/QQ /root/QQ /root/Napcat /opt/Napcat; do
+        if [ -f "$cand/opt/QQ/qq" ]; then
+          log "  迁移 NapCat: $cand → $NAPCAT_DIR"
+          mkdir -p "$BASE_DIR"
+          mv "$cand" "$NAPCAT_DIR"
+          break
+        fi
+      done
+    fi
   fi
 
   # 5. 安装插件（本仓库自带 genshin + mys-qr-login；miao-plugin 单独下载）
   log "[5/7] 安装插件..."
   cd "$TRSS_ROOT/plugins"
   if [ ! -d miao-plugin ]; then
-    curl -L https://codeload.github.com/yoimiya-kokomi/miao-plugin/zip/refs/heads/master -o /tmp/miao.zip
-    unzip -q /tmp/miao.zip -d /tmp/me && mv /tmp/me/miao-plugin-master miao-plugin
+    MIAO_ZIP="$CACHE_DIR/miao.zip"
+    curl -L https://codeload.github.com/yoimiya-kokomi/miao-plugin/zip/refs/heads/master -o "$MIAO_ZIP"
+    unzip -q "$MIAO_ZIP" -d "$CACHE_DIR/me" && mv "$CACHE_DIR/me/miao-plugin-master" miao-plugin
   fi
   if [ ! -d genshin ]; then
     cp -r "$REPO_DIR/plugins/genshin" ./genshin
@@ -110,7 +169,7 @@ install() {
   configure_trss
   configure_napcat
 
-  log "=== 部署完成，正在启动 ==="
+  log "=== 部署完成 ==="
 }
 
 # ---------- TRSS 配置（主人/权限/渲染） ----------
