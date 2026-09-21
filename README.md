@@ -58,15 +58,15 @@ yunzai-research/
 git clone https://github.com/xsddszrc/yunzai-research.git /opt/yunzai-research
 cd /opt/yunzai-research
 
-# 2. 配置机器人账号（环境变量方式，不留存明文于脚本）
-export BOT_QQ=<机器人QQ号>
-export BOT_PASSWORD=<机器人QQ密码>
-export MASTER_QQ=<主人QQ号>
-# 可选：export BASE_DIR=/opt/napyunzai   # 默认值
+# 2. 配置机器人账号（首次复制示例，真实配置保存在本地 .env）
+cp .env-example .env
+vim .env
 
 # 3. 首次部署（装依赖 + 部署 TRSS/NapCat/插件 + 打补丁 01-08 + 写配置 + 启动）
 bash start.sh install
 ```
+
+`start.sh` 每次运行都会自动读取仓库根目录的 `.env`。`.env` 不会被 Git 跟踪；也可以临时通过同名 shell 环境变量覆盖配置。
 
 `start.sh` 子命令：
 

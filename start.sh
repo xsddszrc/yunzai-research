@@ -18,11 +18,34 @@
 # =============================================================
 set -e
 
-# ---------- 配置区（按需修改） ----------
+# ---------- 加载本地配置 ----------
+REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+ENV_FILE="$REPO_DIR/.env"
+if [ -f "$ENV_FILE" ]; then
+  _BOT_QQ_SET="${BOT_QQ+x}"
+  _BOT_QQ_VALUE="${BOT_QQ-}"
+  _BOT_PASSWORD_SET="${BOT_PASSWORD+x}"
+  _BOT_PASSWORD_VALUE="${BOT_PASSWORD-}"
+  _MASTER_QQ_SET="${MASTER_QQ+x}"
+  _MASTER_QQ_VALUE="${MASTER_QQ-}"
+  _BASE_DIR_SET="${BASE_DIR+x}"
+  _BASE_DIR_VALUE="${BASE_DIR-}"
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+  [ "$_BOT_QQ_SET" = x ] && BOT_QQ="$_BOT_QQ_VALUE"
+  [ "$_BOT_PASSWORD_SET" = x ] && BOT_PASSWORD="$_BOT_PASSWORD_VALUE"
+  [ "$_MASTER_QQ_SET" = x ] && MASTER_QQ="$_MASTER_QQ_VALUE"
+  [ "$_BASE_DIR_SET" = x ] && BASE_DIR="$_BASE_DIR_VALUE"
+  unset _BOT_QQ_SET _BOT_QQ_VALUE _BOT_PASSWORD_SET _BOT_PASSWORD_VALUE
+  unset _MASTER_QQ_SET _MASTER_QQ_VALUE _BASE_DIR_SET _BASE_DIR_VALUE
+fi
+
+# ---------- 配置区 ----------
 BOT_QQ="${BOT_QQ:-<机器人QQ>}"
 BOT_PASSWORD="${BOT_PASSWORD:-<QQ密码>}"
 MASTER_QQ="${MASTER_QQ:-<主人QQ>}"
-REPO_DIR="$(cd "$(dirname "$0")" && pwd)"          # 本仓库目录
 
 # 安装根目录（默认 /opt/napyunzai，不硬编码 /root）
 BASE_DIR="${BASE_DIR:-/opt/napyunzai}"

@@ -1,6 +1,7 @@
 # 依赖与运行时数据
 node_modules/
 .pnpm-store/
+.env
 
 # 运行时数据（cookie/UID/日志，不入库）
 data/
